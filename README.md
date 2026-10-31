@@ -1,0 +1,2 @@
+# timeshot
+camera auf Uhrzeit
