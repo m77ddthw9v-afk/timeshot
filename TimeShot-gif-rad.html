@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimeShot</title>
+<style>
+  :root { color-scheme: light dark; --accent: #0a84ff; --ok: #2e9d4f; --warn: #d98200; --bad: #d63a3a; --line: rgba(128,128,128,.35); }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.45 -apple-system, system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  h1 { margin: 0 0 12px; font-size: 24px; }
+  h2 { margin: 0 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
+  section { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  video { width: 100%; border-radius: 12px; background: #000; aspect-ratio: 16 / 9; object-fit: cover; }
+  textarea, input, select { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  textarea { min-height: 64px; resize: vertical; }
+  select { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  .gifbox { margin: 0 0 8px; } .chk { display: flex; gap: 8px; align-items: start; font-size: 14px; margin: 6px 0 10px; }
+  .chk input { width: auto; margin-top: 4px; }
+  #gifOut { margin: 10px 0 14px; } #gifImg { width: 100%; max-width: 480px; border-radius: 8px; display: block; margin-bottom: 8px; }
+  .wheelwrap { flex: 0 0 150px; } .wheellabel { display: block; font-size: 13px; opacity: .85; margin-bottom: 4px; }
+  .wheelbox { position: relative; height: 132px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .wheel { height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; overscroll-behavior: contain; padding: 44px 0; -webkit-overflow-scrolling: touch; outline: none; }
+  .wheel::-webkit-scrollbar { display: none; }
+  .wheel div { height: 44px; line-height: 44px; text-align: center; scroll-snap-align: center; font-size: 18px; font-variant-numeric: tabular-nums; opacity: .45; cursor: pointer; user-select: none; }
+  .wheel div.sel { opacity: 1; font-weight: 600; }
+  .wheelmark { position: absolute; left: 6px; right: 6px; top: 44px; height: 44px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); pointer-events: none; background: rgba(128,128,128,.12); border-radius: 8px; }
+  .wheel:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+  button { font: inherit; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.go { background: var(--ok); border-color: var(--ok); color: #fff; width: 100%; padding: 12px; font-size: 18px; }
+  button.stop { background: var(--bad); border-color: var(--bad); color: #fff; width: 100%; padding: 12px; font-size: 18px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
+  .row label { flex: 1 1 110px; font-size: 13px; opacity: .85; }
+  .hint { font-size: 13px; opacity: .7; margin: 8px 0 0; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  li:last-child { border-bottom: 0; }
+  li button { padding: 3px 9px; font-size: 13px; }
+  .st-pending { opacity: .7; } .st-done { color: var(--ok); } .st-missed { color: var(--warn); }
+  #countdown { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; margin: 0 0 12px; min-height: 32px; }
+  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  #gallery figure { margin: 0; font-size: 12px; text-align: center; }
+  #gallery img { width: 100%; border-radius: 8px; display: block; }
+  #camStatus { font-size: 14px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>TimeShot</h1>
+
+  <section>
+    <video id="video" autoplay playsinline muted></video>
+    <p id="camStatus">Kamera wird gestartet …</p>
+    <div class="row">
+      <label>Kamera<select id="camSel"></select></label>
+      <button id="camBtn">Neu laden</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Uhrzeiten eintippen</h2>
+    <textarea id="times" placeholder="17:35:36, 17:37:24" spellcheck="false"></textarea>
+    <div class="row"><button class="primary" id="addTimes">Zeiten übernehmen</button></div>
+    <p class="hint">Mehrere Zeiten getrennt durch Komma, Leerzeichen oder neue Zeile. Sekunden sind optional. Liegt eine Zeit schon hinter uns, gilt sie für morgen.</p>
+  </section>
+
+  <section>
+    <h2>Serie</h2>
+    <div class="row">
+      <label>Start<input type="time" step="1" id="serStart"></label>
+      <label>Abstand (Sek.)<input type="number" id="serInt" min="1" max="3600" value="1"></label>
+      <label>Anzahl<input type="number" id="serCnt" min="2" max="100" value="3"></label>
+    </div>
+    <div class="row"><button id="addSeries">Serie hinzufügen</button></div>
+  </section>
+
+  <section>
+    <h2>Geplante Fotos (<span id="count">0</span>)</h2>
+    <ul id="list"></ul>
+    <p class="hint" id="empty">Noch keine Zeiten geplant.</p>
+    <div class="row"><button id="clearDone" hidden>Erledigte entfernen</button></div>
+  </section>
+
+  <section>
+    <div id="countdown"></div>
+    <button class="go" id="armBtn" disabled>Scharf schalten</button>
+    <p class="hint">Dieses Browser-Tab muss sichtbar und im Vordergrund bleiben (nicht minimieren, nicht in ein anderes Tab wechseln), und der Computer darf nicht einschlafen. Am Computer wird jedes Foto automatisch als JPG in den Download-Ordner gespeichert (mehrere Downloads erlauben). Auf dem iPhone sicherst du alle Fotos danach mit dem Knopf unter „Aufgenommen“ in die Fotos-App.</p>
+  </section>
+
+  <section>
+    <h2>Aufgenommen (<span id="shotCount">0</span>)</h2>
+    <div class="row gifbox">
+      <div class="wheelwrap">
+        <span class="wheellabel">Zeit pro Bild</span>
+        <div class="wheelbox">
+          <div class="wheel" id="gifWheel" tabindex="0" role="listbox" aria-label="Zeit pro Bild in Sekunden"></div>
+          <div class="wheelmark" aria-hidden="true"></div>
+        </div>
+        <input type="hidden" id="gifDelay" value="0.5">
+      </div>
+      <label>Breite<select id="gifWidth"><option value="320">320 px</option><option value="480" selected>480 px</option><option value="640">640 px</option></select></label>
+      <button class="primary" id="gifBtn" disabled>GIF erstellen</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="gifAuto" checked> GIF nach der letzten Aufnahme automatisch erstellen und speichern</label>
+    <div id="gifOut" hidden>
+      <img id="gifImg" alt="Vorschau des animierten GIFs">
+      <div class="row"><button class="primary" id="gifSave">GIF herunterladen</button> <span class="hint" id="gifInfo"></span></div>
+    </div>
+    <div class="row" style="margin:10px 0"><button class="primary" id="shareBtn" hidden>Alle Fotos in „Fotos“ sichern</button></div>
+    <p class="hint" id="shareHint" hidden>Im Teilen-Menü „Bilder sichern“ wählen, dann liegen alle Fotos in der Fotos-App.</p>
+    <div id="gallery"></div>
+    <div class="row"><button id="clearShots" disabled>Aufnahmen löschen</button></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const LATE_TOLERANCE_MS = 2000;
+
+let stream = null, wakeLock = null, timer = null, armed = false, nextId = 1, taken = 0;
+let shots = [];   // { id, time (ms), status: 'pending' | 'done' | 'missed' }
+
+/* ---------- Kamera ---------- */
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_MOBILE = IS_IOS || /Android/.test(navigator.userAgent);
+const savedFiles = [];   // aufgenommene Fotos als File-Objekte (für das Teilen-Menü)
+const VIRTUAL = /obs|virtual|snap|manycam|camo|epoccam|droidcam/i;     // virtuelle Kameras
+const BUILTIN = /facetime|built-?in|integrierte|eingebaute|macbook/i;  // Mac-Webcam
+
+function stopStream() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+async function openDevice(deviceId) {
+  stopStream();
+  const video = deviceId
+    ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    : (IS_MOBILE
+        ? { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        : { width: { ideal: 1920 }, height: { ideal: 1080 } });
+  stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+  $("video").srcObject = stream;
+}
+
+async function listCameras() {
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  const sel = $("camSel");
+  const current = stream && stream.getVideoTracks()[0] ? stream.getVideoTracks()[0].getSettings().deviceId : "";
+  sel.innerHTML = "";
+  devs.forEach((d, i) => {
+    const o = document.createElement("option");
+    o.value = d.deviceId;
+    o.textContent = d.label || `Kamera ${i + 1}`;
+    if (d.deviceId === current) o.selected = true;
+    sel.appendChild(o);
+  });
+  return devs;
+}
+
+async function startCamera() {
+  $("camStatus").textContent = "Kamera wird gestartet …";
+  try {
+    // 1. Versuch: Standardkamera (Berechtigung wird hier abgefragt)
+    let ok = false;
+    try { await openDevice(null); ok = true; } catch (e) { /* z. B. OBS ohne Verbindung */ }
+
+    let devs = await listCameras();
+    const label = d => d.label || "";
+    const real = devs.filter(d => !VIRTUAL.test(label(d)));
+    const builtin = real.find(d => BUILTIN.test(label(d))) || real[0];
+
+    // 2. Läuft die Standardkamera nicht oder ist sie virtuell (OBS): auf die eingebaute Kamera wechseln
+    const currentLabel = stream ? stream.getVideoTracks()[0].label : "";
+    if ((!ok || VIRTUAL.test(currentLabel)) && builtin) {
+      await openDevice(builtin.deviceId);
+      ok = true;
+      devs = await listCameras();
+    }
+    if (!ok) throw new Error("Keine nutzbare Kamera gefunden.");
+    $("camStatus").textContent = "Kamera bereit: " + stream.getVideoTracks()[0].label;
+  } catch (e) {
+    $("camStatus").textContent = "Kein Kamerazugriff: " + (e && e.message ? e.message : e) +
+      " — Kamera im Browser erlauben (Schloss-Symbol in der Adresszeile) und unter macOS Systemeinstellungen > Datenschutz > Kamera den Browser freigeben.";
+  }
+}
+
+$("camSel").onchange = async () => {
+  try {
+    await openDevice($("camSel").value);
+    $("camStatus").textContent = "Kamera bereit: " + stream.getVideoTracks()[0].label;
+  } catch (e) {
+    $("camStatus").textContent = "Diese Kamera lässt sich nicht starten: " + (e && e.message ? e.message : e);
+  }
+};
+$("camBtn").onclick = startCamera;
+navigator.mediaDevices && navigator.mediaDevices.addEventListener &&
+  navigator.mediaDevices.addEventListener("devicechange", () => { listCameras().catch(() => {}); });
+
+/* ---------- Zeiten ---------- */
+function nextDate(h, m, s) {
+  const d = new Date();
+  d.setHours(h, m, s, 0);
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
+function label(ms) {
+  const d = new Date(ms), t = new Date();
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return d.toDateString() === t.toDateString() ? time : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}. ${time}`;
+}
+
+function addShots(times) {
+  times.forEach(t => shots.push({ id: nextId++, time: t, status: "pending" }));
+  shots.sort((a, b) => a.time - b.time);
+  render();
+}
+
+function parseTimes(text) {
+  const tokens = text.replace(/uhr/gi, "").replace(/\./g, ":").split(/[,;\s]+/).filter(Boolean);
+  const ok = [], bad = [];
+  tokens.forEach(tok => {
+    const parts = tok.split(":");
+    const nums = parts.map(p => (/^\d{1,2}$/.test(p) ? Number(p) : NaN));
+    if (parts.length < 2 || parts.length > 3 || nums.some(isNaN)) return bad.push(tok);
+    const [h, m, s = 0] = nums;
+    if (h > 23 || m > 59 || s > 59) return bad.push(tok);
+    ok.push(nextDate(h, m, s));
+  });
+  return { ok, bad };
+}
+
+$("addTimes").onclick = () => {
+  const { ok, bad } = parseTimes($("times").value);
+  if (ok.length) addShots(ok);
+  $("times").value = bad.join(", ");
+  if (bad.length) alert("Nicht erkannt: " + bad.join(", ") + "\nBitte im Format 17:35:36 eingeben.");
+};
+
+$("addSeries").onclick = () => {
+  const v = $("serStart").value;           // "HH:MM" oder "HH:MM:SS"
+  if (!v) return alert("Bitte eine Startzeit wählen.");
+  const [h, m, s = 0] = v.split(":").map(Number);
+  const interval = Math.max(1, Math.min(3600, Number($("serInt").value) || 10));
+  const count = Math.max(2, Math.min(100, Number($("serCnt").value) || 5));
+  const start = nextDate(h, m, s);
+  addShots(Array.from({ length: count }, (_, i) => start + i * interval * 1000));
+};
+
+$("clearDone").onclick = () => { shots = shots.filter(s => s.status === "pending"); render(); };
+
+/* ---------- Anzeige ---------- */
+function render() {
+  const list = $("list");
+  list.innerHTML = "";
+  shots.forEach(s => {
+    const li = document.createElement("li");
+    const icon = s.status === "done" ? "✓ aufgenommen" : s.status === "missed" ? "⚠ verpasst" : "⏱ wartet";
+    li.className = "st-" + s.status;
+    const span = document.createElement("span");
+    span.textContent = label(s.time) + "  ·  " + icon;
+    li.appendChild(span);
+    if (s.status === "pending" && !armed) {
+      const b = document.createElement("button");
+      b.textContent = "Entfernen";
+      b.onclick = () => { shots = shots.filter(x => x.id !== s.id); render(); };
+      li.appendChild(b);
+    }
+    list.appendChild(li);
+  });
+  $("count").textContent = shots.length;
+  $("empty").hidden = shots.length > 0;
+  $("clearDone").hidden = !shots.some(s => s.status !== "pending");
+  const hasPending = shots.some(s => s.status === "pending");
+  const btn = $("armBtn");
+  btn.textContent = armed ? "Stoppen" : "Scharf schalten";
+  btn.className = armed ? "stop" : "go";
+  btn.disabled = !armed && !hasPending;
+}
+
+function countdownText(ms) {
+  const total = Math.floor(ms / 1000), tenth = Math.floor((ms % 1000) / 100);
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  return (h ? `${h}:${pad(m)}` : pad(m)) + `:${pad(s)},${tenth}`;
+}
+
+/* ---------- Auslösen ---------- */
+let lastPrint = null;
+
+/* Holt ein frisches Bild direkt vom Kamera-Track (unabhängig davon, ob das Video-Element gerade gezeichnet wird). */
+async function grabFrameCanvas() {
+  const track = stream && stream.getVideoTracks()[0];
+  if (track && track.readyState === "live" && "ImageCapture" in window) {
+    try {
+      const bmp = await new ImageCapture(track).grabFrame();
+      const c = document.createElement("canvas");
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext("2d").drawImage(bmp, 0, 0);
+      if (bmp.close) bmp.close();
+      return c;
+    } catch (e) { /* weiter mit dem Video-Element */ }
+  }
+  const video = $("video");
+  if (video.paused) { try { await video.play(); } catch (e) {} }
+  if ("requestVideoFrameCallback" in video) {
+    await new Promise(r => { const t = setTimeout(r, 700); video.requestVideoFrameCallback(() => { clearTimeout(t); r(); }); });
+  }
+  if (!video.videoWidth) return null;
+  const c = document.createElement("canvas");
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext("2d").drawImage(video, 0, 0);
+  return c;
+}
+
+/* Kleiner Fingerabdruck des Bildes, um ein eingefrorenes Kamerabild zu erkennen. */
+function fingerprint(canvas) {
+  const t = document.createElement("canvas");
+  t.width = 64; t.height = 36;
+  const x = t.getContext("2d");
+  x.drawImage(canvas, 0, 0, 64, 36);
+  return Array.from(x.getImageData(0, 0, 64, 36).data).join(",");
+}
+
+async function capture(shot) {
+  let canvas = await grabFrameCanvas();
+  if (!canvas) { shot.status = "missed"; render(); return; }
+  let fp = fingerprint(canvas);
+
+  // Exakt dasselbe Bild wie beim letzten Foto: die Kamera ist eingefroren. Kamera neu starten und erneut aufnehmen.
+  if (lastPrint && fp === lastPrint) {
+    try {
+      const track = stream && stream.getVideoTracks()[0];
+      const id = track && track.getSettings().deviceId;
+      await openDevice(id || null);
+      await new Promise(r => setTimeout(r, 1000));
+      const again = await grabFrameCanvas();
+      if (again) { canvas = again; fp = fingerprint(canvas); }
+    } catch (e) {}
+  }
+  lastPrint = fp;
+  save(canvas, shot);
+}
+
+function updateShare() {
+  const can = savedFiles.length && navigator.canShare && navigator.canShare({ files: savedFiles });
+  $("shareBtn").hidden = !can;
+  $("shareHint").hidden = !can;
+  $("shareBtn").textContent = `Alle ${savedFiles.length} Fotos in „Fotos“ sichern`;
+}
+$("shareBtn").onclick = async () => {
+  try { await navigator.share({ files: savedFiles }); } catch (e) { /* abgebrochen */ }
+};
+
+
+/* ---------- Animiertes GIF (eigener Encoder, keine Bibliothek) ---------- */
+const gifFrames = [];   // verkleinerte Kopien aller Aufnahmen, in Aufnahmereihenfolge
+let gifFile = null, gifUrl = null;
+
+function medianCutPalette(hist) {
+  const keys = [];
+  for (let k = 0; k < 32768; k++) if (hist[k]) keys.push(k);
+  const ch = (k, c) => (c === 0 ? (k >> 10) & 31 : c === 1 ? (k >> 5) & 31 : k & 31);
+  const info = ks => {
+    let mn = [31, 31, 31], mx = [0, 0, 0];
+    ks.forEach(k => { for (let c = 0; c < 3; c++) { const v = ch(k, c); if (v < mn[c]) mn[c] = v; if (v > mx[c]) mx[c] = v; } });
+    const r = [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
+    const axis = r[0] >= r[1] && r[0] >= r[2] ? 0 : r[1] >= r[2] ? 1 : 2;
+    return { keys: ks, axis, range: r[axis] };
+  };
+  let boxes = [info(keys)];
+  while (boxes.length < 256) {
+    let bi = -1, best = 0;
+    boxes.forEach((b, i) => { if (b.keys.length > 1 && b.range >= best && b.range > 0) { best = b.range; bi = i; } });
+    if (bi < 0) break;
+    const b = boxes[bi];
+    const sorted = b.keys.slice().sort((x, y) => ch(x, b.axis) - ch(y, b.axis));
+    let total = 0; sorted.forEach(k => total += hist[k]);
+    let acc = 0, cut = 1;
+    for (let i = 0; i < sorted.length - 1; i++) { acc += hist[sorted[i]]; cut = i + 1; if (acc >= total / 2) break; }
+    boxes.splice(bi, 1, info(sorted.slice(0, cut)), info(sorted.slice(cut)));
+  }
+  const pal = [];
+  boxes.forEach(b => {
+    let r = 0, g = 0, bl = 0, n = 0;
+    b.keys.forEach(k => { const w = hist[k]; r += ((k >> 10) & 31) * w; g += ((k >> 5) & 31) * w; bl += (k & 31) * w; n += w; });
+    pal.push([Math.round(r / n * 8 + 4), Math.round(g / n * 8 + 4), Math.round(bl / n * 8 + 4)].map(v => Math.min(255, v)));
+  });
+  while (pal.length < 256) pal.push([0, 0, 0]);
+  return pal;
+}
+
+function lzwEncode(indices) {
+  const MIN = 8, CLEAR = 256, EOI = 257;
+  const out = [];
+  let cur = 0, bits = 0;
+  const emit = (code, size) => {
+    cur |= code << bits; bits += size;
+    while (bits >= 8) { out.push(cur & 255); cur >>>= 8; bits -= 8; }
+  };
+  let size = MIN + 1, next = EOI + 1;
+  let dict = new Map();
+  emit(CLEAR, size);
+  let prefix = indices[0];
+  for (let i = 1; i < indices.length; i++) {
+    const k = indices[i], key = (prefix << 8) | k;
+    const hit = dict.get(key);
+    if (hit !== undefined) { prefix = hit; continue; }
+    emit(prefix, size);
+    dict.set(key, next);
+    if (next === (1 << size) && size < 12) size++;
+    next++;
+    if (next >= 4094) { emit(CLEAR, size); dict = new Map(); size = MIN + 1; next = EOI + 1; }
+    prefix = k;
+  }
+  emit(prefix, size);
+  emit(EOI, size);
+  if (bits > 0) out.push(cur & 255);
+  return out;
+}
+
+/* canvases: gleich große oder beliebige Canvas-Bilder, width: Zielbreite, delayMs: Anzeigedauer je Bild */
+function buildGif(canvases, width, delayMs) {
+  const w = width;
+  const h = Math.max(1, Math.round(canvases[0].height * w / canvases[0].width));
+  const datas = canvases.map(c => {
+    const t = document.createElement("canvas"); t.width = w; t.height = h;
+    const x = t.getContext("2d"); x.drawImage(c, 0, 0, w, h);
+    return x.getImageData(0, 0, w, h).data;
+  });
+
+  const hist = new Uint32Array(32768);
+  datas.forEach(d => { for (let i = 0; i < d.length; i += 4) hist[((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3)]++; });
+  const pal = medianCutPalette(hist);
+
+  const lut = new Uint8Array(32768);
+  for (let k = 0; k < 32768; k++) {
+    if (!hist[k]) continue;
+    const r = ((k >> 10) & 31) * 8 + 4, g = ((k >> 5) & 31) * 8 + 4, b = (k & 31) * 8 + 4;
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < 256; i++) {
+      const dr = r - pal[i][0], dg = g - pal[i][1], db = b - pal[i][2];
+      const dist = dr * dr + dg * dg + db * db;
+      if (dist < bd) { bd = dist; best = i; if (!dist) break; }
+    }
+    lut[k] = best;
+  }
+
+  const bytes = [];
+  const u16 = v => bytes.push(v & 255, (v >> 8) & 255);
+  const str = t => { for (let i = 0; i < t.length; i++) bytes.push(t.charCodeAt(i)); };
+  str("GIF89a");
+  u16(w); u16(h);
+  bytes.push(0xF7, 0, 0);                         // globale Farbtabelle mit 256 Farben
+  pal.forEach(c => bytes.push(c[0], c[1], c[2]));
+  bytes.push(0x21, 0xFF, 0x0B); str("NETSCAPE2.0");
+  bytes.push(0x03, 0x01, 0x00, 0x00, 0x00);       // Wiederholungen: 0 = endlose Schleife
+
+  const delayCs = Math.max(2, Math.round(delayMs / 10));
+  datas.forEach(d => {
+    const idx = new Uint8Array(w * h);
+    for (let i = 0, p = 0; p < idx.length; i += 4, p++) idx[p] = lut[((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3)];
+    bytes.push(0x21, 0xF9, 0x04, 0x04); u16(delayCs); bytes.push(0x00, 0x00);   // Bild 1 bleibt stehen, bis das nächste kommt
+    bytes.push(0x2C); u16(0); u16(0); u16(w); u16(h); bytes.push(0x00);
+    bytes.push(8);
+    const data = lzwEncode(idx);
+    for (let i = 0; i < data.length; i += 255) {
+      const chunk = data.slice(i, i + 255);
+      bytes.push(chunk.length, ...chunk);
+    }
+    bytes.push(0x00);
+  });
+  bytes.push(0x3B);
+  return new Uint8Array(bytes);
+}
+
+
+/* ---------- Rad für "Zeit pro Bild" ---------- */
+(() => {
+  const wheel = $("gifWheel"), ITEM = 44, MAX_TENTHS = 100;   // 0,1 bis 10,0 Sek. in Schritten von 0,1
+  for (let v = 1; v <= MAX_TENTHS; v++) {
+    const el = document.createElement("div");
+    el.setAttribute("role", "option");
+    el.textContent = (v / 10).toFixed(1).replace(".", ",") + " Sek.";
+    el.onclick = () => wheel.scrollTo({ top: (v - 1) * ITEM, behavior: "smooth" });
+    wheel.appendChild(el);
+  }
+  let selected = -1;
+  const sync = () => {
+    const idx = Math.max(0, Math.min(MAX_TENTHS - 1, Math.round(wheel.scrollTop / ITEM)));
+    if (idx === selected) return;
+    if (selected >= 0) wheel.children[selected].classList.remove("sel");
+    selected = idx;
+    wheel.children[idx].classList.add("sel");
+    wheel.children[idx].setAttribute("aria-selected", "true");
+    $("gifDelay").value = ((idx + 1) / 10).toFixed(1);
+  };
+  let raf = 0;
+  wheel.addEventListener("scroll", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(sync); });
+  wheel.scrollTop = 4 * ITEM;   // Vorgabe 0,5 Sek.
+  sync();
+})();
+
+function updateGifButtons() {
+  $("gifBtn").disabled = gifFrames.length < 2;
+  $("clearShots").disabled = gifFrames.length === 0;
+}
+
+function makeGif(autoSave) {
+  if (gifFrames.length < 2) return;
+  const delay = Math.max(0.1, Number($("gifDelay").value) || 0.5) * 1000;
+  const width = Number($("gifWidth").value) || 480;
+  $("gifBtn").disabled = true;
+  $("gifBtn").textContent = "GIF wird erstellt …";
+  setTimeout(() => {   // kurz warten, damit die Anzeige sich aktualisiert
+    try {
+      const bytes = buildGif(gifFrames, width, delay);
+      if (gifUrl) URL.revokeObjectURL(gifUrl);
+      const blob = new Blob([bytes], { type: "image/gif" });
+      const d = new Date();
+      const name = `timeshot_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}.gif`;
+      gifFile = new File([blob], name, { type: "image/gif" });
+      gifUrl = URL.createObjectURL(blob);
+      $("gifImg").src = gifUrl;
+      $("gifOut").hidden = false;
+      $("gifInfo").textContent = `${gifFrames.length} Bilder, ${(delay / 1000).toString().replace(".", ",")} Sek. pro Bild, Endlosschleife, ${(bytes.length / 1024).toFixed(0)} KB`;
+      $("gifSave").textContent = IS_IOS ? "GIF in „Fotos“ sichern" : "GIF herunterladen";
+      if (autoSave && !IS_IOS) saveGif();
+    } catch (e) {
+      alert("GIF konnte nicht erstellt werden: " + (e && e.message ? e.message : e));
+    }
+    $("gifBtn").textContent = "GIF erstellen";
+    updateGifButtons();
+  }, 30);
+}
+
+async function saveGif() {
+  if (!gifFile) return;
+  if (IS_IOS && navigator.canShare && navigator.canShare({ files: [gifFile] })) {
+    try { await navigator.share({ files: [gifFile] }); } catch (e) {}
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = gifUrl; a.download = gifFile.name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+$("gifBtn").onclick = () => makeGif(false);
+$("gifSave").onclick = saveGif;
+$("clearShots").onclick = () => {
+  gifFrames.length = 0; savedFiles.length = 0; taken = 0; lastPrint = null;
+  $("gallery").innerHTML = ""; $("shotCount").textContent = "0";
+  $("gifOut").hidden = true; gifFile = null;
+  updateShare(); updateGifButtons();
+};
+
+function save(canvas, shot) {
+  const sc = Math.min(1, 640 / canvas.width);
+  const small = document.createElement("canvas");
+  small.width = Math.max(1, Math.round(canvas.width * sc));
+  small.height = Math.max(1, Math.round(canvas.height * sc));
+  small.getContext("2d").drawImage(canvas, 0, 0, small.width, small.height);
+  gifFrames.push(small);
+  updateGifButtons();
+  const d = new Date(shot.time);
+  const name = `timeshot_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}.jpg`;
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    savedFiles.push(new File([blob], name, { type: "image/jpeg" }));
+    if (!IS_IOS) {
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    updateShare();
+    const fig = document.createElement("figure");
+    const img = document.createElement("img"); img.src = url;
+    const cap = document.createElement("figcaption"); cap.textContent = label(shot.time);
+    fig.append(img, cap);
+    $("gallery").prepend(fig);
+    $("shotCount").textContent = ++taken;
+  }, "image/jpeg", 0.95);
+}
+
+function tick() {
+  const now = Date.now();
+  let changed = false;
+  shots.forEach(s => {
+    if (s.status !== "pending" || s.time > now) return;
+    if (now - s.time <= LATE_TOLERANCE_MS) { s.status = "done"; capture(s); }
+    else s.status = "missed";
+    changed = true;
+  });
+  const next = shots.find(s => s.status === "pending");
+  $("countdown").textContent = next ? "Nächstes Foto in " + countdownText(next.time - now) : "";
+  if (changed) render();
+  if (!next) {
+    disarm();
+    if ($("gifAuto").checked && gifFrames.length >= 2) setTimeout(() => makeGif(true), 3000);
+  }
+}
+
+async function keepAwake() {
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+
+function arm() {
+  if (armed || !shots.some(s => s.status === "pending")) return;
+  armed = true;
+  keepAwake();
+  timer = setInterval(tick, 20);
+  render();
+}
+
+function disarm() {
+  armed = false;
+  clearInterval(timer); timer = null;
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  $("countdown").textContent = "";
+  render();
+}
+
+$("armBtn").onclick = () => (armed ? disarm() : arm());
+document.addEventListener("visibilitychange", () => { if (armed && document.visibilityState === "visible") keepAwake(); });
+
+/* ---------- Start ---------- */
+(() => {
+  const soon = new Date(Date.now() + 60000);
+  $("serStart").value = `${pad(soon.getHours())}:${pad(soon.getMinutes())}:00`;
+})();
+render();
+startCamera();
+</script>
+</body>
+</html>
